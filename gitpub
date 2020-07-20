@@ -1,0 +1,101 @@
+#!/bin/sh
+
+pub() {
+	if [ -n "$1" ] && [ -d "/git/$1" ]; then
+		touch "/git/$1/git-daemon-export-ok"
+		return 0;
+	else
+		echo "No existe el depósito"
+		return 1;
+	fi
+}
+
+unpub() {
+	if [ -n "$1" ] && [ -d "/git/$1" ]; then
+		if ! rm "/git/$1/git-daemon-export-ok" 2> /dev/null; then
+			rm -rf "/var/www/git/$1"
+			echo "El depósito no está publicado"
+		fi
+		return 0;
+	else
+		echo "No existe el depósito"
+		return 1;
+	fi
+}
+
+gits() {
+	for git in /git/*; do
+		if [ -f "$git/git-daemon-export-ok" ]; then
+			echo $git
+		fi;
+	done
+}
+
+index() {
+	gits=$(gits)
+
+	if [ "$gits" ]; then
+		stagit-index $gits > /var/www/git/index.html
+	else
+		rm /var/www/git/index.html
+	fi
+
+	echo "Publicados: "
+	for git in $gits; do echo $git; done
+}
+
+repo() {
+	name="${1##*/}"
+	echo Actualizando $name ...
+	cwd=$(pwd)
+	rm -rf "/var/www/git/$name"
+	mkdir /var/www/git/$name -p
+	cd /var/www/git/$name
+	if [ ! -e logo.png ]; then
+		ln -s ../logo.png logo.png
+	fi
+	stagit $1
+	cd $cwd
+}
+
+repos() {
+	gits=$(gits)
+
+	for git in $gits; do
+		repo "$git"
+	done
+}
+
+case "$1" in
+	"pub") 
+		if pub "$2"; then
+			index
+			repo "/git/$2"
+		fi
+		;;
+	"unpub")
+		if unpub "$2"; then
+			index
+		fi
+		;;
+	"index")
+		index
+		;;
+	"repos")
+		if [ $# -gt 1 ]; then
+			repo "/git/$2"
+		else
+			repos
+		fi
+		;;
+	"desc")
+		string=$@
+		string=${string#* * }
+		echo $string > /git/$2/description
+		repo "/git/$2"
+		index
+		;;
+	*)
+		echo "Comando no válido"
+		;;
+esac
